@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import ytDlp from 'yt-dlp-exec';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -24,13 +26,20 @@ app.get('/api/youtube', async (req, res) => {
         res.header('Content-Disposition', `attachment; filename="${title}.webm"`);
         res.header('Content-Type', 'audio/webm');
 
-        const subprocess = ytDlp.exec(videoUrl, {
+        const cookiesPath = path.join(process.cwd(), 'cookies.txt');
+        const execOptions = {
             output: '-',
             format: 'bestaudio[ext=webm]',
             noWarnings: true,
             noCallHome: true,
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        });
+        };
+
+        if (fs.existsSync(cookiesPath)) {
+            console.log('Using cookies.txt for authentication');
+            execOptions.cookies = cookiesPath;
+        }
+
+        const subprocess = ytDlp.exec(videoUrl, execOptions);
 
         subprocess.stdout.pipe(res);
 
@@ -64,12 +73,18 @@ app.get('/api/info', async (req, res) => {
     }
 
     try {
-        const info = await ytDlp(videoUrl, {
+        const cookiesPath = path.join(process.cwd(), 'cookies.txt');
+        const execOptions = {
             dumpSingleJson: true,
             noWarnings: true,
             noCallHome: true,
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        });
+        };
+
+        if (fs.existsSync(cookiesPath)) {
+            execOptions.cookies = cookiesPath;
+        }
+
+        const info = await ytDlp(videoUrl, execOptions);
 
         // Find best thumbnail
         let thumbnail = info.thumbnail;
