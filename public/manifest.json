@@ -1,0 +1,17 @@
+{
+    "name": "Pitch Master",
+    "short_name": "PitchMaster",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#0f172a",
+    "theme_color": "#0f172a",
+    "description": "Music Pitch and Speed Changer",
+    "icons": [
+        {
+            "src": "/vite.svg",
+            "sizes": "512x512",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ]
+}
