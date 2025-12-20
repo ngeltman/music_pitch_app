@@ -1,8 +1,9 @@
 FROM node:20
 
-# Install python3 and ffmpeg (node:20 full includes curl and build tools)
+# Install python3, ffmpeg, and build tools
+# python-is-python3 ensures 'python' points to 'python3' for node-gyp
 RUN apt-get update && \
-    apt-get install -y python3 ffmpeg && \
+    apt-get install -y python3 ffmpeg python-is-python3 build-essential curl && \
     apt-get clean
 
 # Pre-download yt-dlp to a known location
@@ -11,10 +12,12 @@ RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o 
 
 WORKDIR /app
 
-# Copy package files and install dependencies
+# Copy package files
 COPY package*.json ./
-# Use npm ci for clean install and --legacy-peer-deps for React 19 compatibility
-RUN npm ci --legacy-peer-deps
+
+# Use npm install instead of ci for more flexibility with the lockfile
+# --legacy-peer-deps handles React 19 vs dependencies like Tone or youtubei.js
+RUN npm install --legacy-peer-deps --no-audit --no-fund
 
 # Copy the rest of the app
 COPY . .
