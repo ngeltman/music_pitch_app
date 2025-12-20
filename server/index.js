@@ -3,6 +3,9 @@ import cors from 'cors';
 import { getYoutube, startAuthFlow, getSessionStatus } from './auth.js';
 import ytDlp from 'yt-dlp-exec';
 
+// Configure yt-dlp executable path if provided via environment
+const ytdlpOptions = process.env.YTDLP_PATH ? { binaryPath: process.env.YTDLP_PATH } : {};
+
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -69,7 +72,7 @@ app.get('/api/youtube', async (req, res) => {
             format: 'bestaudio[ext=webm]/bestaudio',
             noWarnings: true,
             noCallHome: true
-        });
+        }, ytdlpOptions);
 
         subprocess.stdout.pipe(res);
 
@@ -107,7 +110,7 @@ app.get('/api/info', async (req, res) => {
             dumpSingleJson: true,
             noWarnings: true,
             noCallHome: true
-        });
+        }, ytdlpOptions);
 
         res.json({
             title: info.title,
