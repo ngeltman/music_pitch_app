@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: music-pitch-backend
+    env: docker
+    plan: free
+    region: ohio
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: YTDLP_PATH
+        value: /usr/local/bin/yt-dlp
+      - key: NODE_ENV
+        value: production
