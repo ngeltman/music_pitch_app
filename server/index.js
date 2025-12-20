@@ -7,7 +7,11 @@ import ytDlp from 'yt-dlp-exec';
 const app = express();
 const port = process.env.PORT || 3001;
 
-app.use(cors());
+app.use(cors({
+    origin: ['https://music-pitch-app.vercel.app', 'http://localhost:5173'],
+    methods: ['GET', 'POST'],
+    credentials: true
+}));
 
 // Initialize YouTube on startup
 getYoutube().then(() => {
