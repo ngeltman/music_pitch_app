@@ -1,16 +1,30 @@
-# React + Vite
+# Music Pitch App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A React application to play music and modify its pitch, with YouTube integration.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Play local audio files
+- Stream YouTube audio (including age-restricted content via Google Sign-In)
+- Change playback speed and pitch independently
+- Loop sections
 
-## React Compiler
+## Setup
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1.  Install dependencies:
+    ```bash
+    npm install
+    ```
 
-## Expanding the ESLint configuration
+2.  Start the development server (Backend + Frontend):
+    ```bash
+    npm run dev:full
+    ```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+    Or run them separately:
+    - Backend: `npm run server` (port 3001)
+    - Frontend: `npm run dev` (port 5173)
+
+## Authentication
+
+To access restricted YouTube content, click "Sign in with Google" in the app header and follow the instructions to authorize the device.

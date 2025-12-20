@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Security / Secrets
+.env
+.env.local
+.env.*.local
+youtube-auth.json
+*.json.bak
+! .env.example

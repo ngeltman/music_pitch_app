@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Upload, RotateCcw, Music, Link as LinkIcon, Square } from 'lucide-react';
+import { Play, Pause, Upload, RotateCcw, Music, Link as LinkIcon, Square, LogIn, LogOut, User, Check, ExternalLink } from 'lucide-react';
 import { AudioEngine } from './audio/AudioEngine';
 
 function App() {
@@ -19,8 +19,14 @@ function App() {
   const [metadata, setMetadata] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
 
+  // Auth state
+  const [user, setUser] = useState(null);
+  const [authData, setAuthData] = useState(null);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+
   const animationRef = useRef();
   const fileInputRef = useRef(null);
+  const pollInterval = useRef(null);
 
   useEffect(() => {
     const updateTime = () => {
@@ -38,6 +44,63 @@ function App() {
 
     return () => cancelAnimationFrame(animationRef.current);
   }, [isPlaying, engine]);
+
+  // Check auth status on mount
+  useEffect(() => {
+    checkAuthStatus();
+    return () => stopPolling();
+  }, []);
+
+  const checkAuthStatus = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/auth/status`);
+      const data = await res.json();
+      if (data.logged_in) {
+        setUser({ name: data.name });
+        setAuthData(null);
+        stopPolling();
+      }
+    } catch (err) {
+      console.error("Error checking auth status:", err);
+    }
+  };
+
+  const startPolling = () => {
+    stopPolling();
+    pollInterval.current = setInterval(checkAuthStatus, 5000);
+  };
+
+  const stopPolling = () => {
+    if (pollInterval.current) {
+      clearInterval(pollInterval.current);
+      pollInterval.current = null;
+    }
+  };
+
+  const handleLogin = async () => {
+    setIsAuthenticating(true);
+    try {
+      const res = await fetch(`${API_URL}/api/auth/login`);
+      const data = await res.json();
+      setAuthData(data);
+      startPolling();
+    } catch (err) {
+      console.error("Error starting login:", err);
+      alert("Failed to start login process");
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_URL}/api/auth/logout`);
+      setUser(null);
+      setAuthData(null);
+    } catch (err) {
+      console.error("Error logging out:", err);
+    }
+  };
 
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
@@ -195,7 +258,62 @@ function App() {
           <Music size={24} color="white" />
         </div>
         <h1>Pitch Master</h1>
+
+        {/* Auth Status */}
+        <div style={{ marginLeft: 'auto' }}>
+          {user ? (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div className="auth-badge success" title={`Signed in as ${user.name}`}>
+                <User size={14} />
+                <span>{user.name}</span>
+              </div>
+              <button className="auth-btn" onClick={handleLogout} title="Sign Out">
+                <LogOut size={14} />
+              </button>
+            </div>
+          ) : (
+            <button
+              className="auth-btn"
+              onClick={handleLogin}
+              disabled={isAuthenticating}
+            >
+              <LogIn size={14} />
+              <span>{isAuthenticating ? '...' : 'Sign in with Google'}</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Auth Modal / Overlay */}
+      {authData && !user && (
+        <div className="auth-overlay">
+          <div className="auth-card">
+            <h3>Connect YouTube</h3>
+            <p>To access restricted content, please authorize this app.</p>
+
+            <div className="code-display">
+              {authData.user_code}
+            </div>
+
+            <p className="instruction">
+              1. Copy the code above<br />
+              2. Go to <a href={authData.verification_url} target="_blank" rel="noreferrer" className="link">
+                {authData.verification_url} <ExternalLink size={12} />
+              </a><br />
+              3. Enter the code to sign in
+            </p>
+
+            <div className="loading-spinner">
+              <div className="spinner"></div>
+              <span>Waiting for authorization...</span>
+            </div>
+
+            <button className="btn-text" onClick={() => setAuthData(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Input Section */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
