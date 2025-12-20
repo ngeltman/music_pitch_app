@@ -133,7 +133,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 app.use(express.static(path.join(__dirname, '../dist')));
 
 // Handle SPA routing
-app.get('/*', (req, res, next) => {
+app.get('*all', (req, res, next) => {
     // If it's an API route, let it pass to other handlers (though this is at the end)
     if (req.path.startsWith('/api')) return next();
     res.sendFile(path.join(__dirname, '../dist/index.html'), (err) => {
