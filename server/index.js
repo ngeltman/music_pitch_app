@@ -124,6 +124,26 @@ app.get('/api/info', async (req, res) => {
     }
 });
 
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Serve static files from the build folder (for Docker/Standalone)
+app.use(express.static(path.join(__dirname, '../dist')));
+
+// Handle SPA routing
+app.get('*', (req, res, next) => {
+    // If it's an API route, let it pass to other handlers (though this is at the end)
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(__dirname, '../dist/index.html'), (err) => {
+        if (err) {
+            // If dist doesn't exist, just send 404 for non-API
+            res.status(404).send('Not Found');
+        }
+    });
+});
+
 app.listen(port, () => {
     console.log(`Backend server running at http://localhost:${port}`);
 });

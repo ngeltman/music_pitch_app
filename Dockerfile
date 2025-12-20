@@ -1,8 +1,8 @@
-FROM node:20-slim
+FROM node:20
 
-# Install python3, ffmpeg, and curl
+# Install python3 and ffmpeg (node:20 full includes curl and build tools)
 RUN apt-get update && \
-    apt-get install -y python3 ffmpeg curl && \
+    apt-get install -y python3 ffmpeg && \
     apt-get clean
 
 # Pre-download yt-dlp to a known location
@@ -13,12 +13,13 @@ WORKDIR /app
 
 # Copy package files and install dependencies
 COPY package*.json ./
-RUN npm install
+# Use npm ci for clean install and --legacy-peer-deps for React 19 compatibility
+RUN npm ci --legacy-peer-deps
 
 # Copy the rest of the app
 COPY . .
 
-# Build the frontend (even if using Vercel, it helps to have it for testing/fallback)
+# Build the frontend
 RUN npm run build
 
 # Start the server
