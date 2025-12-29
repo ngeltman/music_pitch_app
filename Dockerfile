@@ -15,21 +15,20 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Use npm install instead of ci for more flexibility with the lockfile
-# --legacy-peer-deps handles React 19 vs dependencies like Tone or youtubei.js
+# Clean installation
 RUN npm install --legacy-peer-deps --no-audit --no-fund
 
 # Copy the rest of the app
 COPY . .
 
-# Build the frontend
+# Build the frontend (Vite generates /dist)
 RUN npm run build
 
-# Start the server
+# Environment settings
 ENV PORT=3001
-EXPOSE 3001
-
-# Ensure yt-dlp is in the path for yt-dlp-exec
 ENV YTDLP_PATH=/usr/local/bin/yt-dlp
+ENV NODE_ENV=production
+
+EXPOSE 3001
 
 CMD ["npm", "run", "server"]

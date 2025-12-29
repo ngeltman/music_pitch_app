@@ -11,3 +11,5 @@ services:
         value: /usr/local/bin/yt-dlp
       - key: NODE_ENV
         value: production
+      - key: VITE_API_URL
+        value: https://music-pitch-backend.onrender.com
