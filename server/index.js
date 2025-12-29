@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { YouTube } from 'youtubei.js';
+import { Innertube } from 'youtubei.js';
 import { spawn } from 'child_process';
 import path from 'path';
 
@@ -13,7 +13,7 @@ app.use(express.json());
 let yt;
 const initYouTube = async () => {
     if (!yt) {
-        yt = await YouTube.newInstance();
+        yt = await Innertube.create();
     }
     return yt;
 };
