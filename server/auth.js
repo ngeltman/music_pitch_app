@@ -18,9 +18,9 @@ export const initYoutube = async () => {
         youtube = await Innertube.create({
             cache: new UniversalCache(false),
             generate_session_locally: true,
-            client_type: 'ANDROID_TESTSUITE'
+            client_type: 'TV_EMBEDDED'
         });
-        console.log('[AUTH] Innertube instance created with ANDROID_TESTSUITE');
+        console.log('[AUTH] Innertube instance created with TV_EMBEDDED');
 
         // Try to load existing credentials
         if (fs.existsSync(CREDENTIALS_FILE)) {
@@ -116,10 +116,18 @@ export const getSessionStatus = async () => {
 
 export const getSessionCookies = async () => {
     const yt = await getYoutube();
-    if (!yt || !yt.session.logged_in) return null;
+    if (!yt) {
+        console.log('[AUTH] No YouTube instance for cookies');
+        return null;
+    }
+    if (!yt.session.logged_in) {
+        console.log('[AUTH] Session NOT logged in for cookies');
+        return null;
+    }
 
     try {
         const cookies = yt.session.cookie_jar.getCookies({ domain: 'youtube.com' });
+        console.log(`[AUTH] Exporting ${cookies?.length || 0} cookies...`);
         if (!cookies || cookies.length === 0) return null;
 
         let netscape = '# Netscape HTTP Cookie File\n';

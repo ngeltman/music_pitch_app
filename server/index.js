@@ -269,6 +269,8 @@ app.get('/api/stream', async (req, res) => {
 
         addToLogs(`Direct stream obtained. Bridging WebStream to NodeStream...`);
         res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader('Transfer-Encoding', 'chunked');
+        res.setHeader('Connection', 'keep-alive');
 
         // Convert Web ReadableStream to Node Readable
         const nodeStream = Readable.fromWeb(webStream);
@@ -304,11 +306,8 @@ app.get('/api/stream', async (req, res) => {
         }
 
         const args = [
-            '-f', 'bestaudio',
-            '--extract-audio',
-            '--audio-format', 'mp3',
+            '-f', 'ba', // best audio (direct stream, no transcoding)
             '--no-playlist',
-            '--force-overwrites',
             '--force-ipv4',
             '--no-check-certificates',
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -323,6 +322,10 @@ app.get('/api/stream', async (req, res) => {
 
         const ytdlp = spawn(ytdlpPath, args);
 
+        ytdlp.on('error', (err) => {
+            addErrorToLogs(`yt-dlp spawn error: ${err.message}`);
+        });
+
         const cleanup = () => {
             if (cookieFile && fs.existsSync(cookieFile)) {
                 try { fs.unlinkSync(cookieFile); } catch (e) { }
@@ -335,6 +338,8 @@ app.get('/api/stream', async (req, res) => {
             if (!headersSent) {
                 addToLogs(`Starting to stream audio (yt-dlp): ${data.length} bytes received`);
                 res.setHeader('Content-Type', 'audio/mpeg');
+                res.setHeader('Transfer-Encoding', 'chunked');
+                res.setHeader('Connection', 'keep-alive');
                 headersSent = true;
             }
         });
