@@ -142,10 +142,21 @@ function App() {
       addLog(`Fetching metadata...`)
       const infoRes = await fetch(`${API_BASE}/info?url=${encodeURIComponent(url)}`)
       console.log('[FRONTEND] Metadata response status:', infoRes.status)
-      if (!infoRes.ok) throw new Error(`Metadata fetch failed: ${infoRes.statusText}`)
+
+      if (!infoRes.ok) {
+        let errorHint = infoRes.statusText
+        try {
+          const errorBody = await infoRes.json()
+          errorHint = errorBody.details || errorBody.error || errorHint
+        } catch (e) {
+          // Body is not JSON
+          const text = await infoRes.text().catch(() => '')
+          if (text) errorHint = text.slice(0, 100)
+        }
+        throw new Error(`Metadata fetch failed (${infoRes.status}): ${errorHint}`)
+      }
 
       const info = await infoRes.json()
-      if (info.error) throw new Error(info.error)
       setVideoInfo(info)
       addLog(`Metadata loaded: ${info.title}`)
 

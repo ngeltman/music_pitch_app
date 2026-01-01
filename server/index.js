@@ -103,8 +103,17 @@ app.get('/api/info', async (req, res) => {
         const youtube = await getYouTube();
         console.log('[BACKEND] Instance obtained. Extracting ID...');
         const videoId = extractVideoId(url);
+
+        if (!videoId) {
+            console.error('[BACKEND] Invalid YouTube URL:', url);
+            return res.status(400).json({ error: 'Invalid YouTube URL', details: 'Could not extract video ID from the provided link.' });
+        }
+
         console.log(`[BACKEND] Fetching info for ID: ${videoId}`);
-        const info = await youtube.getBasicInfo(videoId);
+        const info = await youtube.getBasicInfo(videoId).catch(err => {
+            console.error('[BACKEND] getBasicInfo failed:', err.message);
+            throw err;
+        });
         console.log('[BACKEND] Basic info fetched successfully');
 
         // Defensive mapping
