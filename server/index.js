@@ -3,6 +3,10 @@ import cors from 'cors';
 import { Innertube } from 'youtubei.js';
 import { spawn } from 'child_process';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -19,6 +23,10 @@ const initYouTube = async () => {
 };
 
 // Health check
+app.get('/', (req, res) => {
+    res.json({ status: 'ok', message: 'Music Pitch Backend is alive' });
+});
+
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Backend is running' });
 });
@@ -31,48 +39,66 @@ app.get('/api/info', async (req, res) => {
     try {
         const youtube = await initYouTube();
         const videoId = extractVideoId(url);
+        console.log(`[BACKEND] Fetching info for ID: ${videoId}`);
         const info = await youtube.getBasicInfo(videoId);
 
-        res.json({
-            title: info.basic_info.title,
-            thumbnail: info.basic_info.thumbnail[0].url,
-            duration: info.basic_info.duration,
-            author: info.basic_info.author
-        });
+        // Defensive mapping
+        const basic = info.basic_info;
+        const response = {
+            title: basic.title || 'Unknown Title',
+            thumbnail: basic.thumbnail?.[0]?.url || basic.thumbnail?.url || '',
+            duration: basic.duration || 0,
+            author: {
+                name: typeof basic.author === 'string' ? basic.author : (basic.author?.name || basic.author || 'Unknown Author')
+            }
+        };
+
+        console.log('[BACKEND] Sending mapped response:', response.title);
+        res.json(response);
     } catch (error) {
-        console.error('Error fetching info:', error);
-        res.status(500).json({ error: 'Failed to fetch video info' });
+        console.error('[BACKEND] Error fetching info:', error.message);
+        if (error.stack) console.error(error.stack);
+        res.status(500).json({ error: 'Failed to fetch video info', details: error.message });
     }
 });
 
-// Stream Audio
+// Stream Audio using local yt-dlp.exe or system yt-dlp
 app.get('/api/stream', async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: 'URL is required' });
 
-    const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
+    // Use local exe if on Windows development, or environment path
+    const isWindows = process.platform === 'win32';
+    const localExe = path.join(__dirname, 'yt-dlp.exe');
+    const ytdlpPath = process.env.YTDLP_PATH || (isWindows ? localExe : 'yt-dlp');
 
-    // Use yt-dlp to stream audio as mp3
+    console.log(`[BACKEND] Streaming using: ${ytdlpPath}`);
+
     const ytdlp = spawn(ytdlpPath, [
         '-f', 'bestaudio',
         '--extract-audio',
         '--audio-format', 'mp3',
+        '--no-playlist',
         '-o', '-',
         url
     ]);
 
     res.setHeader('Content-Type', 'audio/mpeg');
-
     ytdlp.stdout.pipe(res);
 
+    ytdlp.stdout.on('data', (data) => {
+        // Just log that we received data to verify it's working
+        // console.log(`[BACKEND] Received ${data.length} bytes from yt-dlp`);
+    });
+
     ytdlp.stderr.on('data', (data) => {
-        // We don't want to log noise but helpful for debugging if it fails
-        // console.log(`yt-dlp stderr: ${data}`);
+        console.error(`[BACKEND] yt-dlp stderr: ${data.toString()}`);
     });
 
     ytdlp.on('close', (code) => {
+        console.log(`[BACKEND] yt-dlp process exited with code ${code}`);
         if (code !== 0) {
-            console.error(`yt-dlp process exited with code ${code}`);
+            console.error(`[BACKEND] yt-dlp error code ${code}`);
         }
     });
 
@@ -87,6 +113,6 @@ function extractVideoId(url) {
     return match ? match[1] : url;
 }
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT} (bound to 0.0.0.0)`);
 });

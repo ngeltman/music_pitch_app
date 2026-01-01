@@ -4,7 +4,11 @@ import * as Tone from 'tone'
 import { Play, Pause, Youtube, Loader2, Music2, RefreshCcw } from 'lucide-react'
 import './App.css'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+const getApiBase = () => {
+  const url = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'
+  return url.endsWith('/api') ? url : `${url.replace(/\/$/, '')}/api`
+}
+const API_BASE = getApiBase()
 
 function App() {
   const [url, setUrl] = useState('')
@@ -27,7 +31,17 @@ function App() {
     player.current.connect(pitchShift.current)
     pitchShift.current.toDestination()
 
-    // WaveSurfer Setup
+    return () => {
+      player.current?.dispose()
+      pitchShift.current?.dispose()
+      wavesurfer.current?.destroy()
+    }
+  }, [])
+
+  // Initialize WaveSurfer only when the container is available
+  useEffect(() => {
+    if (!waveformRef.current || wavesurfer.current) return
+
     wavesurfer.current = WaveSurfer.create({
       container: waveformRef.current,
       waveColor: '#475569',
@@ -41,10 +55,9 @@ function App() {
 
     return () => {
       wavesurfer.current?.destroy()
-      player.current?.dispose()
-      pitchShift.current?.dispose()
+      wavesurfer.current = null
     }
-  }, [])
+  }, [videoInfo])
 
   const handleLoadVideo = async () => {
     if (!url) return
@@ -55,6 +68,8 @@ function App() {
     try {
       // 1. Get Metadata
       const infoRes = await fetch(`${API_BASE}/info?url=${encodeURIComponent(url)}`)
+      if (!infoRes.ok) throw new Error('Failed to fetch video info from server')
+
       const info = await infoRes.json()
       if (info.error) throw new Error(info.error)
       setVideoInfo(info)
@@ -63,15 +78,20 @@ function App() {
       const streamUrl = `${API_BASE}/stream?url=${encodeURIComponent(url)}`
 
       // Load Waveview
-      wavesurfer.current.load(streamUrl)
+      if (wavesurfer.current) {
+        wavesurfer.current.load(streamUrl)
+      }
 
       // Load Tone player
-      await player.current.load(streamUrl)
+      if (player.current) {
+        await player.current.load(streamUrl)
+      }
 
       setIsReady(true)
     } catch (err) {
       console.error('Load error:', err)
-      alert('Error loading video. Make sure the backend is running.')
+      setVideoInfo(null) // Reset to avoid rendering a broken player section
+      alert('Error loading video. Make sure the backend is running and the URL is valid.')
     } finally {
       setIsLoading(false)
     }
