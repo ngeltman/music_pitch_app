@@ -1,38 +1,41 @@
-import { Innertube, UniversalCache } from 'youtubei.js';
+import { UniversalCache, Innertube, OAuth } from 'youtubei.js';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 let youtube = null;
-const CREDENTIALS_FILE = path.join(process.cwd(), 'youtube-auth.json');
+const CREDENTIALS_FILE = './yt-credentials.json';
+
+let logCallback = (msg) => console.log(msg);
+export const setLogCallback = (cb) => { logCallback = cb; };
+
+const addToLogs = (msg) => {
+    logCallback(`[AUTH] ${msg}`);
+};
 
 export const initYoutube = async () => {
-    console.log('[AUTH] initYoutube called');
+    addToLogs('initYoutube called');
     if (youtube) return youtube;
 
     try {
-        console.log('[AUTH] Creating Innertube instance...');
+        addToLogs('Creating Innertube instance...');
         youtube = await Innertube.create({
             cache: new UniversalCache(false),
             generate_session_locally: true,
-            client_type: 'TV_EMBEDDED'
+            client_type: 'WEB_REMIX'
         });
-        console.log('[AUTH] Innertube instance created with TV_EMBEDDED');
+        addToLogs('Innertube instance created with WEB_REMIX');
 
         // Try to load existing credentials
         if (fs.existsSync(CREDENTIALS_FILE)) {
-            console.log('[AUTH] Loading YouTube credentials from file...');
+            addToLogs('Loading YouTube credentials from file...');
             const creds = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, 'utf-8'));
 
             // Restore session
             await youtube.session.signIn(creds);
-            console.log('[AUTH] YouTube session restored successfully');
+            addToLogs('YouTube session restored successfully');
         }
     } catch (error) {
-        console.error('[AUTH] Error initializing YouTube:', error);
+        addToLogs(`Error initializing YouTube: ${error.message}`);
     }
 
     return youtube;
@@ -127,18 +130,21 @@ export const getSessionCookies = async () => {
 
     try {
         const cookies = yt.session.cookie_jar.getCookies({ domain: 'youtube.com' });
-        console.log(`[AUTH] Exporting ${cookies?.length || 0} cookies...`);
-        if (!cookies || cookies.length === 0) return null;
+        const googleCookies = yt.session.cookie_jar.getCookies({ domain: 'google.com' });
+        const allCookies = [...(cookies || []), ...(googleCookies || [])];
+
+        addToLogs(`Exporting ${allCookies.length} cookies...`);
+        if (allCookies.length === 0) return null;
 
         let netscape = '# Netscape HTTP Cookie File\n';
         cookies.forEach(c => {
-            const domain = c.domain.startsWith('.') ? c.domain : `.${c.domain}`;
+            const domain = c.domain.startsWith('.') ? c.domain : `.${c.domain} `;
             const path = c.path || '/';
             const secure = c.secure ? 'TRUE' : 'FALSE';
             const expires = c.expires ? Math.floor(new Date(c.expires).getTime() / 1000) : 0;
             const name = c.key;
             const value = c.value;
-            netscape += `${domain}\tTRUE\t${path}\t${secure}\t${expires}\t${name}\t${value}\n`;
+            netscape += `${domain} \tTRUE\t${path} \t${secure} \t${expires} \t${name} \t${value} \n`;
         });
         return netscape;
     } catch (e) {

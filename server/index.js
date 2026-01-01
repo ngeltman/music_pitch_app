@@ -42,6 +42,9 @@ const getYouTube = async () => {
     return await auth.getYoutube();
 };
 
+// Connect log bridge from auth module
+auth.setLogCallback(addToLogs);
+
 // Startup Check
 const checkEnvironment = async () => {
     const { execSync } = await import('child_process');
@@ -257,6 +260,14 @@ app.get('/api/stream', async (req, res) => {
 
     try {
         const videoId = extractVideoId(url);
+
+        // --- EARLY HEADERS ---
+        // Send headers immediately to prevent browser/proxy timeouts while we prepare the stream
+        res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader('Transfer-Encoding', 'chunked');
+        res.setHeader('Connection', 'keep-alive');
+        // ---------------------
+
         addToLogs(`Attempting direct stream via youtubei.js for: ${videoId}`);
         const youtube = await getYouTube();
 
@@ -268,9 +279,6 @@ app.get('/api/stream', async (req, res) => {
         });
 
         addToLogs(`Direct stream obtained. Bridging WebStream to NodeStream...`);
-        res.setHeader('Content-Type', 'audio/mpeg');
-        res.setHeader('Transfer-Encoding', 'chunked');
-        res.setHeader('Connection', 'keep-alive');
 
         // Convert Web ReadableStream to Node Readable
         const nodeStream = Readable.fromWeb(webStream);
@@ -332,16 +340,10 @@ app.get('/api/stream', async (req, res) => {
             }
         };
 
-        let headersSent = false;
+        let headersSentDirectly = true; // We sent them early now
 
         ytdlp.stdout.once('data', (data) => {
-            if (!headersSent) {
-                addToLogs(`Starting to stream audio (yt-dlp): ${data.length} bytes received`);
-                res.setHeader('Content-Type', 'audio/mpeg');
-                res.setHeader('Transfer-Encoding', 'chunked');
-                res.setHeader('Connection', 'keep-alive');
-                headersSent = true;
-            }
+            addToLogs(`Starting to stream audio (yt-dlp): ${data.length} bytes received`);
         });
 
         ytdlp.stdout.pipe(res);
@@ -352,25 +354,16 @@ app.get('/api/stream', async (req, res) => {
             stderrChunks.push(msg);
             addErrorToLogs(`yt-dlp stderr: ${msg.trim()}`);
 
-            if (msg.includes('ERROR') && !headersSent) {
-                headersSent = true;
-                res.status(500).json({
-                    error: 'yt-dlp reported an error',
-                    details: msg.trim()
-                });
+            if (msg.includes('ERROR')) {
+                // Since headers were sent early, we can't send a 500 JSON response now.
+                // We just log it and the client will see the stream end/fail.
+                addErrorToLogs(`yt-dlp error during stream: ${msg.trim()}`);
             }
         });
 
         ytdlp.on('close', (code) => {
             addToLogs(`yt-dlp process exited with code ${code}`);
             cleanup();
-            if (code !== 0 && !headersSent) {
-                const finalError = stderrChunks.join('').trim() || `Exit code ${code}`;
-                res.status(500).json({
-                    error: 'yt-dlp failed',
-                    details: finalError
-                });
-            }
         });
 
         req.on('close', () => {
