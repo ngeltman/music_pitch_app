@@ -26,6 +26,26 @@ const initYouTube = async () => {
     return yt;
 };
 
+// Startup Check
+const checkEnvironment = async () => {
+    const { execSync } = await import('child_process');
+    try {
+        const ffmpegVersion = execSync('ffmpeg -version').toString().split('\n')[0];
+        console.log(`[BACKEND] ffmpeg found: ${ffmpegVersion}`);
+    } catch (e) {
+        console.error('[BACKEND] ffmpeg NOT FOUND in PATH. Streaming will likely fail.');
+    }
+
+    const ytdlpPath = process.env.YTDLP_PATH || (process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp');
+    try {
+        const ytdlpVersion = execSync(`${ytdlpPath} --version`).toString().trim();
+        console.log(`[BACKEND] yt-dlp found: ${ytdlpVersion} at ${ytdlpPath}`);
+    } catch (e) {
+        console.error(`[BACKEND] yt-dlp NOT FOUND at ${ytdlpPath}`);
+    }
+};
+checkEnvironment();
+
 // Health check
 app.get('/', (req, res) => {
     res.json({ status: 'ok', message: 'Music Pitch Backend is alive' });
@@ -33,6 +53,25 @@ app.get('/', (req, res) => {
 
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Backend is running' });
+});
+
+// Debug endpoint
+app.get('/api/debug', async (req, res) => {
+    const { execSync } = await import('child_process');
+    const debugInfo = {
+        platform: process.platform,
+        node: process.version,
+        env: process.env.NODE_ENV,
+        ytdlp_path: process.env.YTDLP_PATH || 'default',
+        ffmpeg: 'not found',
+        ytdlp: 'not found'
+    };
+    try { debugInfo.ffmpeg = execSync('ffmpeg -version').toString().split('\n')[0]; } catch (e) { }
+    try {
+        const path_to_use = process.env.YTDLP_PATH || (process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp');
+        debugInfo.ytdlp = execSync(`${path_to_use} --version`).toString().trim();
+    } catch (e) { }
+    res.json(debugInfo);
 });
 
 // Get Video Info
@@ -76,33 +115,45 @@ app.get('/api/stream', async (req, res) => {
     const localExe = path.join(__dirname, 'yt-dlp.exe');
     const ytdlpPath = process.env.YTDLP_PATH || (isWindows ? localExe : 'yt-dlp');
 
-    console.log(`[BACKEND] Streaming using: ${ytdlpPath}`);
+    console.log(`[BACKEND] Streaming using: ${ytdlpPath} - URL: ${url}`);
 
     const ytdlp = spawn(ytdlpPath, [
         '-f', 'bestaudio',
         '--extract-audio',
         '--audio-format', 'mp3',
         '--no-playlist',
+        '--force-overwrites',
         '-o', '-',
         url
     ]);
 
-    res.setHeader('Content-Type', 'audio/mpeg');
-    ytdlp.stdout.pipe(res);
+    let headersSent = false;
 
-    ytdlp.stdout.on('data', (data) => {
-        // Just log that we received data to verify it's working
-        // console.log(`[BACKEND] Received ${data.length} bytes from yt-dlp`);
+    ytdlp.stdout.once('data', (data) => {
+        if (!headersSent) {
+            console.log(`[BACKEND] Starting to stream audio: ${data.length} bytes received`);
+            res.setHeader('Content-Type', 'audio/mpeg');
+            headersSent = true;
+        }
     });
 
+    ytdlp.stdout.pipe(res);
+
     ytdlp.stderr.on('data', (data) => {
-        console.error(`[BACKEND] yt-dlp stderr: ${data.toString()}`);
+        const msg = data.toString();
+        if (msg.includes('ERROR')) {
+            console.error(`[BACKEND] yt-dlp ERROR: ${msg}`);
+            if (!headersSent) {
+                headersSent = true;
+                res.status(500).json({ error: 'yt-dlp failed to start', details: msg });
+            }
+        }
     });
 
     ytdlp.on('close', (code) => {
         console.log(`[BACKEND] yt-dlp process exited with code ${code}`);
-        if (code !== 0) {
-            console.error(`[BACKEND] yt-dlp error code ${code}`);
+        if (code !== 0 && !headersSent) {
+            res.status(500).json({ error: `yt-dlp process exited with code ${code}` });
         }
     });
 
