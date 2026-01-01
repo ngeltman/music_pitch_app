@@ -10,13 +10,16 @@ let youtube = null;
 const CREDENTIALS_FILE = path.join(process.cwd(), 'youtube-auth.json');
 
 export const initYoutube = async () => {
+    console.log('[AUTH] initYoutube called');
     if (youtube) return youtube;
 
     try {
+        console.log('[AUTH] Creating Innertube instance...');
         youtube = await Innertube.create({
             cache: new UniversalCache(false),
             generate_session_locally: true
         });
+        console.log('[AUTH] Innertube instance created');
 
         // Try to load existing credentials
         if (fs.existsSync(CREDENTIALS_FILE)) {

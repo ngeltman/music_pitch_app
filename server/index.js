@@ -96,12 +96,16 @@ app.post('/api/auth/logout', async (req, res) => {
 app.get('/api/info', async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: 'URL is required' });
+    console.log(`[BACKEND] info request for URL: ${url}`);
 
     try {
+        console.log('[BACKEND] Getting YouTube instance...');
         const youtube = await getYouTube();
+        console.log('[BACKEND] Instance obtained. Extracting ID...');
         const videoId = extractVideoId(url);
         console.log(`[BACKEND] Fetching info for ID: ${videoId}`);
         const info = await youtube.getBasicInfo(videoId);
+        console.log('[BACKEND] Basic info fetched successfully');
 
         // Defensive mapping
         const basic = info.basic_info;
