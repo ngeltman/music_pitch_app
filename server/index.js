@@ -142,21 +142,29 @@ app.get('/api/stream', async (req, res) => {
 
     ytdlp.stdout.pipe(res);
 
+    const stderrChunks = [];
     ytdlp.stderr.on('data', (data) => {
         const msg = data.toString();
-        if (msg.includes('ERROR')) {
-            console.error(`[BACKEND] yt-dlp ERROR: ${msg}`);
-            if (!headersSent) {
-                headersSent = true;
-                res.status(500).json({ error: 'yt-dlp failed to start', details: msg });
-            }
+        stderrChunks.push(msg);
+        console.error(`[BACKEND] yt-dlp stderr: ${msg}`);
+
+        if (msg.includes('ERROR') && !headersSent) {
+            headersSent = true;
+            res.status(500).json({
+                error: 'yt-dlp reported an error',
+                details: msg.trim()
+            });
         }
     });
 
     ytdlp.on('close', (code) => {
         console.log(`[BACKEND] yt-dlp process exited with code ${code}`);
         if (code !== 0 && !headersSent) {
-            res.status(500).json({ error: `yt-dlp process exited with code ${code}` });
+            const finalError = stderrChunks.join('').trim() || `Exit code ${code}`;
+            res.status(500).json({
+                error: 'yt-dlp failed',
+                details: finalError
+            });
         }
     });
 

@@ -106,7 +106,9 @@ function App() {
         // If HEAD fails, try a GET to capture the error JSON
         const errorRes = await fetch(streamUrl)
         const errorData = await errorRes.json().catch(() => ({ error: 'Unknown stream error' }))
-        throw new Error(`Stream check failed: ${errorData.error || errorRes.statusText}`)
+        const specificError = errorData.details || errorData.error || errorRes.statusText
+        addLog(`STREAM ERROR: ${specificError}`)
+        throw new Error(`Stream check failed: ${specificError}`)
       }
       addLog(`Stream validated, loading audio...`)
 
