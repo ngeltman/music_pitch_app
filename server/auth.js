@@ -1,4 +1,4 @@
-import { UniversalCache, Innertube, OAuth } from 'youtubei.js';
+import { UniversalCache, Innertube } from 'youtubei.js';
 import fs from 'fs';
 import path from 'path';
 
