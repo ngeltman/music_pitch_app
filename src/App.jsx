@@ -17,10 +17,11 @@ function App() {
   const [pitch, setPitch] = useState(0)
   const [speed, setSpeed] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
-  const [isReady, setIsReady] = useState(false)
   const [backendStatus, setBackendStatus] = useState('checking')
   const [logs, setLogs] = useState([])
   const [showLogs, setShowLogs] = useState(false)
+  const [userSession, setUserSession] = useState(null)
+  const [authFlow, setAuthFlow] = useState(null)
 
   const addLog = (msg) => setLogs(prev => [...prev.slice(-19), `[${new Date().toLocaleTimeString()}] ${msg}`])
 
@@ -32,7 +33,53 @@ function App() {
   useEffect(() => {
     console.log('[FRONTEND] API_BASE is:', API_BASE)
     checkBackend()
+    fetchAuthStatus()
   }, [])
+
+  const fetchAuthStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/status`)
+      const data = await res.json()
+      setUserSession(data.logged_in ? data : null)
+    } catch (err) {
+      console.error('Failed to fetch auth status:', err)
+    }
+  }
+
+  const handleLogin = async () => {
+    setAuthFlow('loading')
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, { method: 'POST' })
+      const data = await res.json()
+      setAuthFlow(data)
+      addLog('Auth flow started. Waiting for user verification...')
+
+      // Poll for status every 5 seconds
+      const timer = setInterval(async () => {
+        const statusRes = await fetch(`${API_BASE}/auth/status`)
+        const status = await statusRes.json()
+        if (status.logged_in) {
+          setUserSession(status)
+          setAuthFlow(null)
+          addLog(`Successfully signed in as: ${status.name}`)
+          clearInterval(timer)
+        }
+      }, 5000)
+    } catch (err) {
+      console.error('Login error:', err)
+      setAuthFlow(null)
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, { method: 'POST' })
+      setUserSession(null)
+      addLog('Signed out successfully')
+    } catch (err) {
+      console.error('Logout error:', err)
+    }
+  }
 
   const checkBackend = async () => {
     try {
@@ -169,15 +216,44 @@ function App() {
     <div className="app-container">
       <div className="glass-panel">
         <header className="header">
-          <div className="status-badge-container">
-            <span className={`status-badge ${backendStatus}`}>
-              Backend: {backendStatus.toUpperCase()}
-            </span>
-            <button onClick={checkBackend} className="btn-refresh"><RefreshCcw size={14} /></button>
+          <div className="top-bar">
+            <div className="status-badge-container">
+              <span className={`status-badge ${backendStatus}`}>
+                Backend: {backendStatus.toUpperCase()}
+              </span>
+              <button onClick={checkBackend} className="btn-refresh"><RefreshCcw size={14} /></button>
+            </div>
+            <div className="auth-section">
+              {userSession ? (
+                <div className="user-info">
+                  <span className="user-name">👤 {userSession.name}</span>
+                  <button onClick={handleLogout} className="btn-text">Sign Out</button>
+                </div>
+              ) : (
+                <button onClick={handleLogin} className="btn btn-secondary btn-sm" disabled={authFlow === 'loading'}>
+                  {authFlow === 'loading' ? 'Starting...' : 'Sign In with Google'}
+                </button>
+              )}
+            </div>
           </div>
           <h1>PITCH SHIFT <span className="highlight">YT</span></h1>
           <p className="subtitle">Premium YouTube Audio Engine</p>
         </header>
+
+        {authFlow && authFlow !== 'loading' && (
+          <div className="auth-overlay">
+            <div className="auth-modal">
+              <h3>YouTube Authentication</h3>
+              <p>To access restricted content, follow these steps:</p>
+              <ol>
+                <li>Go to: <a href={authFlow.verification_url} target="_blank" rel="noreferrer">{authFlow.verification_url}</a></li>
+                <li>Enter this code: <strong className="auth-code">{authFlow.user_code}</strong></li>
+              </ol>
+              <p className="small">The application will automatically detect when you've finished.</p>
+              <button onClick={() => setAuthFlow(null)} className="btn btn-text">Cancel</button>
+            </div>
+          </div>
+        )}
 
         <section className="input-section">
           <div className="url-bar">
@@ -272,7 +348,7 @@ function App() {
           )}
         </div>
       </div>
-    </div>
+    </div >
   )
 }
 

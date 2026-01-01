@@ -4,6 +4,7 @@ import { Innertube } from 'youtubei.js';
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import * as auth from './auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,12 +19,9 @@ app.use((req, res, next) => {
 });
 app.use(express.json());
 
-let yt;
-const initYouTube = async () => {
-    if (!yt) {
-        yt = await Innertube.create();
-    }
-    return yt;
+// Helper to get YouTube instance (consolidated)
+const getYouTube = async () => {
+    return await auth.getYoutube();
 };
 
 // Startup Check
@@ -74,13 +72,33 @@ app.get('/api/debug', async (req, res) => {
     res.json(debugInfo);
 });
 
+// Auth Endpoints
+app.get('/api/auth/status', async (req, res) => {
+    const status = await auth.getSessionStatus();
+    res.json(status);
+});
+
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const authInfo = await auth.startAuthFlow();
+        res.json(authInfo);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to start auth flow' });
+    }
+});
+
+app.post('/api/auth/logout', async (req, res) => {
+    const result = await auth.signOut();
+    res.json(result);
+});
+
 // Get Video Info
 app.get('/api/info', async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: 'URL is required' });
 
     try {
-        const youtube = await initYouTube();
+        const youtube = await getYouTube();
         const videoId = extractVideoId(url);
         console.log(`[BACKEND] Fetching info for ID: ${videoId}`);
         const info = await youtube.getBasicInfo(videoId);
