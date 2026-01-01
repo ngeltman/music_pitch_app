@@ -130,12 +130,18 @@ app.get('/api/info', async (req, res) => {
 
         // Try youtubei.js first (Authenticated)
         try {
-            addToLogs('Attempting metadata fetch via youtubei.js (getInfo)...');
+            addToLogs('Attempting metadata fetch via youtubei.js (getBasicInfo)...');
             const youtube = await getYouTube();
-            const info = await youtube.getInfo(videoId);
+
+            // Log session status for visibility
+            addToLogs(`Session Logged In: ${youtube.session.logged_in}`);
+
+            // getBasicInfo is lighter and less likely to hit 400 than getInfo (which calls /next)
+            const info = await youtube.getBasicInfo(videoId);
             const basic = info.basic_info;
+
             responseMetadata = {
-                source: 'youtubei.js',
+                source: 'youtubei.js (basic)',
                 title: basic.title || 'Unknown Title',
                 thumbnail: basic.thumbnail?.[0]?.url || basic.thumbnail?.url || '',
                 duration: basic.duration || 0,
@@ -143,9 +149,9 @@ app.get('/api/info', async (req, res) => {
                     name: typeof basic.author === 'string' ? basic.author : (basic.author?.name || basic.author || 'Unknown Author')
                 }
             };
-            addToLogs('youtubei.js metadata fetch successful');
+            addToLogs('youtubei.js basic metadata fetch successful');
         } catch (ytError) {
-            addErrorToLogs(`youtubei.js getInfo failed: ${ytError.message}. Trying yt-dlp fallback...`);
+            addErrorToLogs(`youtubei.js getBasicInfo failed: ${ytError.message}. Trying yt-dlp fallback...`);
 
             try {
                 const isWindows = process.platform === 'win32';
