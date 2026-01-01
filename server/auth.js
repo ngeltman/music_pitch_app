@@ -17,7 +17,8 @@ export const initYoutube = async () => {
         console.log('[AUTH] Creating Innertube instance...');
         youtube = await Innertube.create({
             cache: new UniversalCache(false),
-            generate_session_locally: true
+            generate_session_locally: true,
+            client_type: 'TV_EMBEDDED'
         });
         console.log('[AUTH] Innertube instance created');
 

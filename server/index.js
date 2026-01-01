@@ -187,68 +187,101 @@ app.get('/api/info', async (req, res) => {
 app.get('/api/stream', async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: 'URL is required' });
+    addToLogs(`Streaming request for URL: ${url}`);
 
-    // Use local exe if on Windows development, or environment path
-    const isWindows = process.platform === 'win32';
-    const localExe = path.join(__dirname, 'yt-dlp.exe');
-    const ytdlpPath = process.env.YTDLP_PATH || (isWindows ? localExe : 'yt-dlp');
+    try {
+        const videoId = extractVideoId(url);
+        addToLogs(`Attempting direct stream via youtubei.js for: ${videoId}`);
+        const youtube = await getYouTube();
 
-    addToLogs(`Streaming using: ${ytdlpPath} - URL: ${url}`);
+        // Use download() to get a node-compatible ReadableStream
+        const stream = await youtube.download(videoId, {
+            type: 'audio',
+            quality: 'best',
+            format: 'mp4' // mp4 container for audio is very compatible
+        });
 
-    const ytdlp = spawn(ytdlpPath, [
-        '-f', 'bestaudio',
-        '--extract-audio',
-        '--audio-format', 'mp3',
-        '--no-playlist',
-        '--force-overwrites',
-        '--force-ipv4',
-        '--no-check-certificates',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        '-o', '-',
-        url
-    ]);
+        addToLogs(`Direct stream obtained via youtubei.js. Piping to response...`);
+        res.setHeader('Content-Type', 'audio/mpeg');
 
-    let headersSent = false;
+        // Innertube download() returns a ReadableStream
+        // We need to handle potential errors on the stream
+        stream.on('error', (err) => {
+            addErrorToLogs(`youtubei.js stream error: ${err.message}`);
+        });
 
-    ytdlp.stdout.once('data', (data) => {
-        if (!headersSent) {
-            addToLogs(`Starting to stream audio: ${data.length} bytes received`);
-            res.setHeader('Content-Type', 'audio/mpeg');
-            headersSent = true;
-        }
-    });
+        stream.pipe(res);
 
-    ytdlp.stdout.pipe(res);
+        req.on('close', () => {
+            addToLogs('Client disconnected, stopping stream.');
+            // Some streams might need explicit destroy/cancel but pipe usually handles it
+        });
 
-    const stderrChunks = [];
-    ytdlp.stderr.on('data', (data) => {
-        const msg = data.toString();
-        stderrChunks.push(msg);
-        addErrorToLogs(`yt-dlp stderr: ${msg.trim()}`);
+    } catch (ytError) {
+        addErrorToLogs(`Direct streaming failed: ${ytError.message}. Falling back to yt-dlp...`);
 
-        if (msg.includes('ERROR') && !headersSent) {
-            headersSent = true;
-            res.status(500).json({
-                error: 'yt-dlp reported an error',
-                details: msg.trim()
-            });
-        }
-    });
+        // FALLBACK TO YT-DLP
+        const isWindows = process.platform === 'win32';
+        const localExe = path.join(__dirname, 'yt-dlp.exe');
+        const ytdlpPath = process.env.YTDLP_PATH || (isWindows ? localExe : 'yt-dlp');
 
-    ytdlp.on('close', (code) => {
-        addToLogs(`yt-dlp process exited with code ${code}`);
-        if (code !== 0 && !headersSent) {
-            const finalError = stderrChunks.join('').trim() || `Exit code ${code}`;
-            res.status(500).json({
-                error: 'yt-dlp failed',
-                details: finalError
-            });
-        }
-    });
+        addToLogs(`Streaming using yt-dlp fallback: ${ytdlpPath}`);
 
-    req.on('close', () => {
-        ytdlp.kill();
-    });
+        const ytdlp = spawn(ytdlpPath, [
+            '-f', 'bestaudio',
+            '--extract-audio',
+            '--audio-format', 'mp3',
+            '--no-playlist',
+            '--force-overwrites',
+            '--force-ipv4',
+            '--no-check-certificates',
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            '-o', '-',
+            url
+        ]);
+
+        let headersSent = false;
+
+        ytdlp.stdout.once('data', (data) => {
+            if (!headersSent) {
+                addToLogs(`Starting to stream audio (yt-dlp): ${data.length} bytes received`);
+                res.setHeader('Content-Type', 'audio/mpeg');
+                headersSent = true;
+            }
+        });
+
+        ytdlp.stdout.pipe(res);
+
+        const stderrChunks = [];
+        ytdlp.stderr.on('data', (data) => {
+            const msg = data.toString();
+            stderrChunks.push(msg);
+            addErrorToLogs(`yt-dlp stderr: ${msg.trim()}`);
+
+            if (msg.includes('ERROR') && !headersSent) {
+                headersSent = true;
+                res.status(500).json({
+                    error: 'yt-dlp reported an error',
+                    details: msg.trim()
+                });
+            }
+        });
+
+        ytdlp.on('close', (code) => {
+            addToLogs(`yt-dlp process exited with code ${code}`);
+            if (code !== 0 && !headersSent) {
+                const finalError = stderrChunks.join('').trim() || `Exit code ${code}`;
+                res.status(500).json({
+                    error: 'yt-dlp failed',
+                    details: finalError
+                });
+            }
+        });
+
+        req.on('close', () => {
+            ytdlp.kill();
+        });
+    }
 });
 
 function extractVideoId(url) {
