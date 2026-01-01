@@ -165,6 +165,9 @@ function App() {
       addLog(`Loading stream into audio engine...`)
       console.log('[FRONTEND] Streaming from:', streamUrl)
 
+      // Fetch backend logs to see if there were any hidden errors
+      fetchBackendLogs()
+
       // Load Waveview
       if (wavesurfer.current) {
         console.log('[FRONTEND] Loading Wavesurfer...')
@@ -182,14 +185,28 @@ function App() {
       setIsReady(true)
       addLog(`SUCCESS: Audio engine ready`)
       console.log('[FRONTEND] Load complete')
+      fetchBackendLogs()
     } catch (err) {
       console.error('Load error:', err)
       addLog(`FATAL ERROR: ${err.message}`)
+      fetchBackendLogs()
       setVideoInfo(null)
       const errorMsg = `Error connecting to: ${API_BASE}\n\nDetails: ${err.message}\n\nCheck 'View Technical Logs' for more info.`
       alert(errorMsg)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const fetchBackendLogs = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/logs`)
+      const data = await res.json()
+      if (data.logs) {
+        data.logs.forEach(msg => addLog(`[BACKEND] ${msg}`))
+      }
+    } catch (e) {
+      console.error('Failed to fetch backend logs:', e)
     }
   }
 

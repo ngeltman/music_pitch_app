@@ -12,6 +12,21 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Log buffer for remote debugging
+const logBuffer = [];
+const addToLogs = (msg) => {
+    const entry = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    logBuffer.push(entry);
+    if (logBuffer.length > 100) logBuffer.shift();
+    console.log(msg); // Keep local console too
+};
+const addErrorToLogs = (msg) => {
+    const entry = `[${new Date().toLocaleTimeString()}] ERROR: ${msg}`;
+    logBuffer.push(entry);
+    if (logBuffer.length > 100) logBuffer.shift();
+    console.error(msg);
+};
+
 app.use(cors());
 app.use((req, res, next) => {
     console.log(`[BACKEND] Request from Origin: ${req.get('Origin') || 'N/A'} - Path: ${req.path}`);
@@ -72,6 +87,10 @@ app.get('/api/debug', async (req, res) => {
     res.json(debugInfo);
 });
 
+app.get('/api/logs', (req, res) => {
+    res.json({ logs: logBuffer });
+});
+
 // Auth Endpoints
 app.get('/api/auth/status', async (req, res) => {
     const status = await auth.getSessionStatus();
@@ -96,47 +115,70 @@ app.post('/api/auth/logout', async (req, res) => {
 app.get('/api/info', async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: 'URL is required' });
-    console.log(`[BACKEND] info request for URL: ${url}`);
+    addToLogs(`info request for URL: ${url}`);
 
     try {
-        console.log('[BACKEND] Getting YouTube instance...');
-        const youtube = await getYouTube();
-        console.log('[BACKEND] Instance obtained. Extracting ID...');
         const videoId = extractVideoId(url);
-        console.log(`[BACKEND] Extracted Video ID: "${videoId}"`);
+        addToLogs(`Extracted Video ID: "${videoId}"`);
 
         if (!videoId || videoId.length !== 11) {
-            console.error('[BACKEND] Invalid/Incomplete Video ID:', videoId);
-            return res.status(400).json({ error: 'Invalid YouTube URL', details: `Could not extract a valid 11-character video ID. Extracted: ${videoId}` });
+            addErrorToLogs(`Invalid/Incomplete Video ID: "${videoId}"`);
+            return res.status(400).json({ error: 'Invalid YouTube URL', details: `Could not extract a valid 11-char ID. Got: ${videoId}` });
         }
 
-        console.log(`[BACKEND] Fetching info for ID: ${videoId}`);
-        // Use getInfo instead of getBasicInfo for more robust metadata
-        const info = await youtube.getInfo(videoId).catch(err => {
-            console.error('[BACKEND] getInfo failed!');
-            console.error('[BACKEND] Error Name:', err.name);
-            console.error('[BACKEND] Error Message:', err.message);
-            if (err.info) console.error('[BACKEND] Innertube Info:', JSON.stringify(err.info));
-            throw err;
-        });
-        console.log('[BACKEND] Info fetched successfully');
+        let responseMetadata = null;
 
-        // Map response (getInfo structure is slightly different)
-        const basic = info.basic_info;
-        const response = {
-            title: basic.title || 'Unknown Title',
-            thumbnail: basic.thumbnail?.[0]?.url || basic.thumbnail?.url || '',
-            duration: basic.duration || 0,
-            author: {
-                name: typeof basic.author === 'string' ? basic.author : (basic.author?.name || basic.author || 'Unknown Author')
+        // Try youtubei.js first (Authenticated)
+        try {
+            addToLogs('Attempting metadata fetch via youtubei.js (getInfo)...');
+            const youtube = await getYouTube();
+            const info = await youtube.getInfo(videoId);
+            const basic = info.basic_info;
+            responseMetadata = {
+                source: 'youtubei.js',
+                title: basic.title || 'Unknown Title',
+                thumbnail: basic.thumbnail?.[0]?.url || basic.thumbnail?.url || '',
+                duration: basic.duration || 0,
+                author: {
+                    name: typeof basic.author === 'string' ? basic.author : (basic.author?.name || basic.author || 'Unknown Author')
+                }
+            };
+            addToLogs('youtubei.js metadata fetch successful');
+        } catch (ytError) {
+            addErrorToLogs(`youtubei.js getInfo failed: ${ytError.message}. Trying yt-dlp fallback...`);
+
+            try {
+                const isWindows = process.platform === 'win32';
+                const ytdlpPath = process.env.YTDLP_PATH || (isWindows ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp');
+                const { execSync } = await import('child_process');
+
+                // Using full URL for yt-dlp is safer
+                const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+                const cmd = `"${ytdlpPath}" --dump-json --no-playlist --skip-download --force-ipv4 --no-check-certificates --user-agent "${userAgent}" "${url}"`;
+                addToLogs(`Running yt-dlp fallback...`);
+
+                const stdout = execSync(cmd).toString();
+                const json = JSON.parse(stdout);
+
+                responseMetadata = {
+                    source: 'yt-dlp',
+                    title: json.title || 'Unknown Title',
+                    thumbnail: json.thumbnail || '',
+                    duration: json.duration || 0,
+                    author: {
+                        name: json.uploader || json.channel || 'Unknown Author'
+                    }
+                };
+                addToLogs('yt-dlp metadata fetch successful');
+            } catch (dlpError) {
+                addErrorToLogs(`yt-dlp fallback also failed: ${dlpError.message}`);
+                throw new Error(`All metadata methods failed. YouTube: ${ytError.message}, Path: ${dlpError.message}`);
             }
-        };
+        }
 
-        console.log('[BACKEND] Sending mapped response:', response.title);
-        res.json(response);
+        res.json(responseMetadata);
     } catch (error) {
-        console.error('[BACKEND] Error fetching info:', error.message);
-        if (error.stack) console.error(error.stack);
+        addErrorToLogs(`Final metadata error: ${error.message}`);
         res.status(500).json({ error: 'Failed to fetch video info', details: error.message });
     }
 });
@@ -151,7 +193,7 @@ app.get('/api/stream', async (req, res) => {
     const localExe = path.join(__dirname, 'yt-dlp.exe');
     const ytdlpPath = process.env.YTDLP_PATH || (isWindows ? localExe : 'yt-dlp');
 
-    console.log(`[BACKEND] Streaming using: ${ytdlpPath} - URL: ${url}`);
+    addToLogs(`Streaming using: ${ytdlpPath} - URL: ${url}`);
 
     const ytdlp = spawn(ytdlpPath, [
         '-f', 'bestaudio',
@@ -170,7 +212,7 @@ app.get('/api/stream', async (req, res) => {
 
     ytdlp.stdout.once('data', (data) => {
         if (!headersSent) {
-            console.log(`[BACKEND] Starting to stream audio: ${data.length} bytes received`);
+            addToLogs(`Starting to stream audio: ${data.length} bytes received`);
             res.setHeader('Content-Type', 'audio/mpeg');
             headersSent = true;
         }
@@ -182,7 +224,7 @@ app.get('/api/stream', async (req, res) => {
     ytdlp.stderr.on('data', (data) => {
         const msg = data.toString();
         stderrChunks.push(msg);
-        console.error(`[BACKEND] yt-dlp stderr: ${msg}`);
+        addErrorToLogs(`yt-dlp stderr: ${msg.trim()}`);
 
         if (msg.includes('ERROR') && !headersSent) {
             headersSent = true;
@@ -194,7 +236,7 @@ app.get('/api/stream', async (req, res) => {
     });
 
     ytdlp.on('close', (code) => {
-        console.log(`[BACKEND] yt-dlp process exited with code ${code}`);
+        addToLogs(`yt-dlp process exited with code ${code}`);
         if (code !== 0 && !headersSent) {
             const finalError = stderrChunks.join('').trim() || `Exit code ${code}`;
             res.status(500).json({
@@ -210,9 +252,16 @@ app.get('/api/stream', async (req, res) => {
 });
 
 function extractVideoId(url) {
+    if (!url) return '';
+    const trimmed = url.trim();
     const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
-    const match = url.match(regex);
-    return match ? match[1] : url;
+    const match = trimmed.match(regex);
+    if (match && match[1]) return match[1];
+
+    // Last ditch: if it's 11 chars, assume it's the ID
+    if (trimmed.length === 11 && !trimmed.includes('/') && !trimmed.includes('.')) return trimmed;
+
+    return trimmed;
 }
 
 app.listen(PORT, '0.0.0.0', () => {
