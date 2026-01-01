@@ -4,6 +4,7 @@ import { Innertube } from 'youtubei.js';
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { Readable } from 'stream';
 import * as auth from './auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -151,34 +152,78 @@ app.get('/api/info', async (req, res) => {
             };
             addToLogs('youtubei.js basic metadata fetch successful');
         } catch (ytError) {
-            addErrorToLogs(`youtubei.js getBasicInfo failed: ${ytError.message}. Trying yt-dlp fallback...`);
+            addErrorToLogs(`youtubei.js getBasicInfo failed: ${ytError.message}. Trying YouTube Search (bypass)...`);
 
             try {
-                const isWindows = process.platform === 'win32';
-                const ytdlpPath = process.env.YTDLP_PATH || (isWindows ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp');
-                const { execSync } = await import('child_process');
+                const youtube = await getYouTube();
+                // Search is much less likely to be blocked than /player
+                const searchResults = await youtube.search(videoId, { type: 'video' });
+                const video = searchResults.results?.[0];
 
-                // Using full URL for yt-dlp is safer
-                const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-                const cmd = `"${ytdlpPath}" --dump-json --no-playlist --skip-download --force-ipv4 --no-check-certificates --user-agent "${userAgent}" "${url}"`;
-                addToLogs(`Running yt-dlp fallback...`);
+                if (video && video.id === videoId) {
+                    responseMetadata = {
+                        source: 'youtubei.js (search)',
+                        title: video.title?.toString() || 'Unknown Title',
+                        thumbnail: video.thumbnails?.[0]?.url || '',
+                        duration: video.duration?.seconds || 0,
+                        author: {
+                            name: video.author?.name || 'Unknown Author'
+                        }
+                    };
+                    addToLogs('YouTube Search metadata fetch successful');
+                } else {
+                    throw new Error('Video not found in search results');
+                }
+            } catch (searchError) {
+                addErrorToLogs(`Search fallback failed: ${searchError.message}. Trying yt-dlp fallback...`);
 
-                const stdout = execSync(cmd).toString();
-                const json = JSON.parse(stdout);
+                try {
+                    const isWindows = process.platform === 'win32';
+                    const ytdlpPath = process.env.YTDLP_PATH || (isWindows ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp');
+                    const { execSync } = await import('child_process');
 
-                responseMetadata = {
-                    source: 'yt-dlp',
-                    title: json.title || 'Unknown Title',
-                    thumbnail: json.thumbnail || '',
-                    duration: json.duration || 0,
-                    author: {
-                        name: json.uploader || json.channel || 'Unknown Author'
+                    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+                    // Added --js-runtime node to help with signature extraction
+                    const cmd = `"${ytdlpPath}" --dump-json --no-playlist --skip-download --force-ipv4 --no-check-certificates --user-agent "${userAgent}" --js-runtime node "${url}"`;
+                    addToLogs(`Running yt-dlp fallback...`);
+
+                    const stdout = execSync(cmd).toString();
+                    const json = JSON.parse(stdout);
+
+                    responseMetadata = {
+                        source: 'yt-dlp',
+                        title: json.title || 'Unknown Title',
+                        thumbnail: json.thumbnail || '',
+                        duration: json.duration || 0,
+                        author: {
+                            name: json.uploader || json.channel || 'Unknown Author'
+                        }
+                    };
+                    addToLogs('yt-dlp metadata fetch successful');
+                } catch (dlpError) {
+                    addErrorToLogs(`yt-dlp fallback also failed. Trying oEmbed (Last Resort)...`);
+
+                    try {
+                        // oEmbed is public and almost never blocked
+                        const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+                        const res = await fetch(oembedUrl);
+                        const data = await res.json();
+
+                        responseMetadata = {
+                            source: 'oEmbed (Safe Fallback)',
+                            title: data.title || 'Unknown Title',
+                            thumbnail: data.thumbnail_url || '',
+                            duration: 0, // oEmbed doesn't provide duration
+                            author: {
+                                name: data.author_name || 'YouTube User'
+                            }
+                        };
+                        addToLogs('oEmbed metadata fetch successful');
+                    } catch (oError) {
+                        addErrorToLogs(`oEmbed also failed: ${oError.message}`);
+                        throw new Error(`All metadata methods failed. Player: ${ytError.message}, Search: ${searchError.message}, yt-dlp: ${dlpError.message}`);
                     }
-                };
-                addToLogs('yt-dlp metadata fetch successful');
-            } catch (dlpError) {
-                addErrorToLogs(`yt-dlp fallback also failed: ${dlpError.message}`);
-                throw new Error(`All metadata methods failed. YouTube: ${ytError.message}, Path: ${dlpError.message}`);
+                }
             }
         }
 
@@ -200,23 +245,24 @@ app.get('/api/stream', async (req, res) => {
         addToLogs(`Attempting direct stream via youtubei.js for: ${videoId}`);
         const youtube = await getYouTube();
 
-        // Use download() to get a node-compatible ReadableStream
-        const stream = await youtube.download(videoId, {
+        // Use download() to get a web stream
+        const webStream = await youtube.download(videoId, {
             type: 'audio',
             quality: 'best',
-            format: 'mp4' // mp4 container for audio is very compatible
+            format: 'mp4'
         });
 
-        addToLogs(`Direct stream obtained via youtubei.js. Piping to response...`);
+        addToLogs(`Direct stream obtained. Bridging WebStream to NodeStream...`);
         res.setHeader('Content-Type', 'audio/mpeg');
 
-        // Innertube download() returns a ReadableStream
-        // We need to handle potential errors on the stream
-        stream.on('error', (err) => {
+        // Convert Web ReadableStream to Node Readable
+        const nodeStream = Readable.fromWeb(webStream);
+
+        nodeStream.on('error', (err) => {
             addErrorToLogs(`youtubei.js stream error: ${err.message}`);
         });
 
-        stream.pipe(res);
+        nodeStream.pipe(res);
 
         req.on('close', () => {
             addToLogs('Client disconnected, stopping stream.');
@@ -242,6 +288,7 @@ app.get('/api/stream', async (req, res) => {
             '--force-ipv4',
             '--no-check-certificates',
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            '--js-runtime', 'node',
             '-o', '-',
             url
         ]);

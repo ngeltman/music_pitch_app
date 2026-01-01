@@ -18,7 +18,7 @@ export const initYoutube = async () => {
         youtube = await Innertube.create({
             cache: new UniversalCache(false),
             generate_session_locally: true,
-            client_type: 'ANDROID'
+            client_type: 'YTMUSIC'
         });
         console.log('[AUTH] Innertube instance created');
 
