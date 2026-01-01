@@ -129,16 +129,24 @@ export const getSessionCookies = async () => {
     }
 
     try {
-        const cookies = yt.session.cookie_jar.getCookies({ domain: 'youtube.com' });
-        const googleCookies = yt.session.cookie_jar.getCookies({ domain: 'google.com' });
-        const allCookies = [...(cookies || []), ...(googleCookies || [])];
+        const domains = ['youtube.com', '.youtube.com', 'google.com', '.google.com'];
+        let allCookies = [];
+        for (const domain of domains) {
+            const domainCookies = yt.session.cookie_jar.getCookies({ domain });
+            if (domainCookies && domainCookies.length > 0) {
+                allCookies = [...allCookies, ...domainCookies];
+            }
+        }
 
-        addToLogs(`Exporting ${allCookies.length} cookies...`);
-        if (allCookies.length === 0) return null;
+        addToLogs(`Exporting ${allCookies.length} total cookies across domains...`);
+        if (allCookies.length === 0) {
+            addToLogs('No cookies found in the cookie jar!');
+            return null;
+        }
 
         let netscape = '# Netscape HTTP Cookie File\n';
-        cookies.forEach(c => {
-            const domain = c.domain.startsWith('.') ? c.domain : `.${c.domain} `;
+        allCookies.forEach(c => {
+            const domain = c.domain.startsWith('.') ? c.domain : `.${c.domain}`;
             const path = c.path || '/';
             const secure = c.secure ? 'TRUE' : 'FALSE';
             const expires = c.expires ? Math.floor(new Date(c.expires).getTime() / 1000) : 0;

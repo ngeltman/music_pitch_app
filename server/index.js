@@ -306,20 +306,29 @@ app.get('/api/stream', async (req, res) => {
 
         // Try to inject cookies if available
         let cookieFile = null;
-        const cookieData = await auth.getSessionCookies();
-        if (cookieData) {
-            cookieFile = path.join(os.tmpdir(), `stream-cookies-${Date.now()}.txt`);
-            fs.writeFileSync(cookieFile, cookieData);
-            addToLogs(`Using session cookies for yt-dlp stream (file: ${cookieFile})`);
+        try {
+            const cookieData = await auth.getSessionCookies();
+            if (cookieData) {
+                cookieFile = path.join(os.tmpdir(), `stream-cookies-${Date.now()}.txt`);
+                fs.writeFileSync(cookieFile, cookieData);
+                addToLogs(`Using session cookies for yt-dlp stream (file: ${cookieFile})`);
+            } else {
+                addToLogs('No session cookies available for streaming fallback.');
+            }
+        } catch (cookieErr) {
+            addErrorToLogs(`Failed to prepare cookies: ${cookieErr.message}`);
         }
 
         const args = [
-            '-f', 'ba', // best audio (direct stream, no transcoding)
+            '-f', 'bestaudio',
+            '--extract-audio',
+            '--audio-format', 'mp3',
             '--no-playlist',
             '--force-ipv4',
             '--no-check-certificates',
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--js-runtime', 'node',
+            '--buffer-size', '16K',
             '-o', '-',
             `https://www.youtube.com/watch?v=${videoId}`
         ];
