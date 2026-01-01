@@ -5,6 +5,8 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Readable } from 'stream';
+import fs from 'fs';
+import os from 'os';
 import * as auth from './auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -155,9 +157,9 @@ app.get('/api/info', async (req, res) => {
             addErrorToLogs(`youtubei.js getBasicInfo failed: ${ytError.message}. Trying YouTube Search (bypass)...`);
 
             try {
-                const youtube = await getYouTube();
-                // Search is much less likely to be blocked than /player
-                const searchResults = await youtube.search(videoId, { type: 'video' });
+                // Use a NEW unauthenticated instance for search - sometimes accounts are flagged on cloud IPs
+                const cleanYoutube = await Innertube.create({ client_type: 'WEB' });
+                const searchResults = await cleanYoutube.search(videoId, { type: 'video' });
                 const video = searchResults.results?.[0];
 
                 if (video && video.id === videoId) {
@@ -183,11 +185,24 @@ app.get('/api/info', async (req, res) => {
                     const { execSync } = await import('child_process');
 
                     const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-                    // Added --js-runtime node to help with signature extraction
-                    const cmd = `"${ytdlpPath}" --dump-json --no-playlist --skip-download --force-ipv4 --no-check-certificates --user-agent "${userAgent}" --js-runtime node "${url}"`;
+
+                    // Try to inject cookies if available
+                    let cookieFile = null;
+                    const cookieData = await auth.getSessionCookies();
+                    if (cookieData) {
+                        cookieFile = path.join(os.tmpdir(), `info-cookies-${Date.now()}.txt`);
+                        fs.writeFileSync(cookieFile, cookieData);
+                        addToLogs(`Using session cookies for info fallback (file: ${cookieFile})`);
+                    }
+
+                    const cookieFlag = cookieFile ? `--cookies "${cookieFile}"` : '';
+                    const cmd = `"${ytdlpPath}" --dump-json --no-playlist --skip-download --force-ipv4 --no-check-certificates --user-agent "${userAgent}" --js-runtime node ${cookieFlag} "https://www.youtube.com/watch?v=${videoId}"`;
+
                     addToLogs(`Running yt-dlp fallback...`);
 
                     const stdout = execSync(cmd).toString();
+                    if (cookieFile && fs.existsSync(cookieFile)) fs.unlinkSync(cookieFile);
+
                     const json = JSON.parse(stdout);
 
                     responseMetadata = {
@@ -279,7 +294,16 @@ app.get('/api/stream', async (req, res) => {
 
         addToLogs(`Streaming using yt-dlp fallback: ${ytdlpPath}`);
 
-        const ytdlp = spawn(ytdlpPath, [
+        // Try to inject cookies if available
+        let cookieFile = null;
+        const cookieData = await auth.getSessionCookies();
+        if (cookieData) {
+            cookieFile = path.join(os.tmpdir(), `stream-cookies-${Date.now()}.txt`);
+            fs.writeFileSync(cookieFile, cookieData);
+            addToLogs(`Using session cookies for yt-dlp stream (file: ${cookieFile})`);
+        }
+
+        const args = [
             '-f', 'bestaudio',
             '--extract-audio',
             '--audio-format', 'mp3',
@@ -290,8 +314,20 @@ app.get('/api/stream', async (req, res) => {
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--js-runtime', 'node',
             '-o', '-',
-            url
-        ]);
+            `https://www.youtube.com/watch?v=${videoId}`
+        ];
+
+        if (cookieFile) {
+            args.push('--cookies', cookieFile);
+        }
+
+        const ytdlp = spawn(ytdlpPath, args);
+
+        const cleanup = () => {
+            if (cookieFile && fs.existsSync(cookieFile)) {
+                try { fs.unlinkSync(cookieFile); } catch (e) { }
+            }
+        };
 
         let headersSent = false;
 
@@ -322,6 +358,7 @@ app.get('/api/stream', async (req, res) => {
 
         ytdlp.on('close', (code) => {
             addToLogs(`yt-dlp process exited with code ${code}`);
+            cleanup();
             if (code !== 0 && !headersSent) {
                 const finalError = stderrChunks.join('').trim() || `Exit code ${code}`;
                 res.status(500).json({
@@ -332,6 +369,7 @@ app.get('/api/stream', async (req, res) => {
         });
 
         req.on('close', () => {
+            cleanup();
             ytdlp.kill();
         });
     }

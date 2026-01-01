@@ -18,9 +18,9 @@ export const initYoutube = async () => {
         youtube = await Innertube.create({
             cache: new UniversalCache(false),
             generate_session_locally: true,
-            client_type: 'YTMUSIC'
+            client_type: 'ANDROID_TESTSUITE'
         });
-        console.log('[AUTH] Innertube instance created');
+        console.log('[AUTH] Innertube instance created with ANDROID_TESTSUITE');
 
         // Try to load existing credentials
         if (fs.existsSync(CREDENTIALS_FILE)) {
@@ -112,6 +112,31 @@ export const getSessionStatus = async () => {
         }
     }
     return { logged_in: false };
+};
+
+export const getSessionCookies = async () => {
+    const yt = await getYoutube();
+    if (!yt || !yt.session.logged_in) return null;
+
+    try {
+        const cookies = yt.session.cookie_jar.getCookies({ domain: 'youtube.com' });
+        if (!cookies || cookies.length === 0) return null;
+
+        let netscape = '# Netscape HTTP Cookie File\n';
+        cookies.forEach(c => {
+            const domain = c.domain.startsWith('.') ? c.domain : `.${c.domain}`;
+            const path = c.path || '/';
+            const secure = c.secure ? 'TRUE' : 'FALSE';
+            const expires = c.expires ? Math.floor(new Date(c.expires).getTime() / 1000) : 0;
+            const name = c.key;
+            const value = c.value;
+            netscape += `${domain}\tTRUE\t${path}\t${secure}\t${expires}\t${name}\t${value}\n`;
+        });
+        return netscape;
+    } catch (e) {
+        console.error('[AUTH] Error exporting cookies:', e.message);
+        return null;
+    }
 };
 
 export const signOut = async () => {
