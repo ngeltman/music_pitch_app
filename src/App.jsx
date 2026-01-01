@@ -19,6 +19,10 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [isReady, setIsReady] = useState(false)
   const [backendStatus, setBackendStatus] = useState('checking')
+  const [logs, setLogs] = useState([])
+  const [showLogs, setShowLogs] = useState(false)
+
+  const addLog = (msg) => setLogs(prev => [...prev.slice(-19), `[${new Date().toLocaleTimeString()}] ${msg}`])
 
   const waveformRef = useRef(null)
   const wavesurfer = useRef(null)
@@ -90,9 +94,21 @@ function App() {
       const info = await infoRes.json()
       if (info.error) throw new Error(info.error)
       setVideoInfo(info)
+      addLog(`Metadata loaded: ${info.title}`)
 
       // 2. Load Audio for Tone.js and WaveSurfer
       const streamUrl = `${API_BASE}/stream?url=${encodeURIComponent(url)}`
+      addLog(`Testing stream connectivity...`)
+
+      // Pre-check stream to avoid "unable to decode" error
+      const streamCheck = await fetch(streamUrl, { method: 'HEAD' })
+      if (!streamCheck.ok) {
+        // If HEAD fails, try a GET to capture the error JSON
+        const errorRes = await fetch(streamUrl)
+        const errorData = await errorRes.json().catch(() => ({ error: 'Unknown stream error' }))
+        throw new Error(`Stream check failed: ${errorData.error || errorRes.statusText}`)
+      }
+      addLog(`Stream validated, loading audio...`)
 
       // Load Waveview
       if (wavesurfer.current) {
@@ -105,10 +121,12 @@ function App() {
       }
 
       setIsReady(true)
+      addLog(`Audio engine ready`)
     } catch (err) {
       console.error('Load error:', err)
+      addLog(`FATAL ERROR: ${err.message}`)
       setVideoInfo(null)
-      const errorMsg = `Error connecting to: ${API_BASE}\n\nDetails: ${err.message}\n\nPlease check that VITE_API_URL is correctly set in Vercel and the backend is running.`
+      const errorMsg = `Error connecting to: ${API_BASE}\n\nDetails: ${err.message}\n\nCheck 'View Technical Logs' for more info.`
       alert(errorMsg)
     } finally {
       setIsLoading(false)
@@ -233,6 +251,24 @@ function App() {
             <p>Enter a YouTube link to get started</p>
           </div>
         )}
+
+        <div className="debug-footer">
+          <button className="btn-text" onClick={() => setShowLogs(!showLogs)}>
+            {showLogs ? 'Hide Logs' : 'View Technical Logs'}
+          </button>
+          {showLogs && (
+            <div className="log-window">
+              <div className="log-header">
+                <span>System Logs</span>
+                <button onClick={() => {
+                  navigator.clipboard.writeText(logs.join('\n'));
+                  alert('Logs copied to clipboard');
+                }}>Copy</button>
+              </div>
+              <pre>{logs.join('\n') || 'No logs yet...'}</pre>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

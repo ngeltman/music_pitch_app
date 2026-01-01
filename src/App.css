@@ -1,3 +1,10 @@
+/* Main Design Tokens */
+:root {
+  --primary: #38bdf8;
+  --bg: #0f172a;
+  --panel: rgba(30, 41, 59, 0.7);
+}
+
 /* App status styles */
 .status-badge-container {
   display: flex;
@@ -47,4 +54,58 @@
   color: white;
 }
 
-/* Rest of the styles can follow the main design */
+/* Debug Logs Section */
+.debug-footer {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: center;
+}
+
+.btn-text {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 0.8rem;
+  text-decoration: underline;
+}
+
+.log-window {
+  margin-top: 1rem;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  text-align: left;
+  padding: 12px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.75rem;
+}
+
+.log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  color: #94a3b8;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 4px;
+}
+
+.log-header button {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.log-window pre {
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  color: #10b981;
+  /* Matrix style green for logs */
+  line-height: 1.4;
+}
