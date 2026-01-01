@@ -17,6 +17,7 @@ function App() {
   const [pitch, setPitch] = useState(0)
   const [speed, setSpeed] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
+  const [isReady, setIsReady] = useState(false)
   const [backendStatus, setBackendStatus] = useState('checking')
   const [logs, setLogs] = useState([])
   const [showLogs, setShowLogs] = useState(false)
