@@ -12,6 +12,10 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
+app.use((req, res, next) => {
+    console.log(`[BACKEND] Request from Origin: ${req.get('Origin') || 'N/A'} - Path: ${req.path}`);
+    next();
+});
 app.use(express.json());
 
 let yt;

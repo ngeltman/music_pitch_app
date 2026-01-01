@@ -18,11 +18,28 @@ function App() {
   const [speed, setSpeed] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [isReady, setIsReady] = useState(false)
+  const [backendStatus, setBackendStatus] = useState('checking')
 
   const waveformRef = useRef(null)
   const wavesurfer = useRef(null)
   const player = useRef(null)
   const pitchShift = useRef(null)
+
+  useEffect(() => {
+    console.log('[FRONTEND] API_BASE is:', API_BASE)
+    checkBackend()
+  }, [])
+
+  const checkBackend = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/health`)
+      if (res.ok) setBackendStatus('online')
+      else setBackendStatus('error')
+    } catch (err) {
+      console.error('[FRONTEND] Backend health check failed:', err)
+      setBackendStatus('offline')
+    }
+  }
 
   useEffect(() => {
     // Tone.js Setup
@@ -90,8 +107,9 @@ function App() {
       setIsReady(true)
     } catch (err) {
       console.error('Load error:', err)
-      setVideoInfo(null) // Reset to avoid rendering a broken player section
-      alert('Error loading video. Make sure the backend is running and the URL is valid.')
+      setVideoInfo(null)
+      const errorMsg = `Error connecting to: ${API_BASE}\n\nDetails: ${err.message}\n\nPlease check that VITE_API_URL is correctly set in Vercel and the backend is running.`
+      alert(errorMsg)
     } finally {
       setIsLoading(false)
     }
@@ -131,6 +149,12 @@ function App() {
     <div className="app-container">
       <div className="glass-panel">
         <header className="header">
+          <div className="status-badge-container">
+            <span className={`status-badge ${backendStatus}`}>
+              Backend: {backendStatus.toUpperCase()}
+            </span>
+            <button onClick={checkBackend} className="btn-refresh"><RefreshCcw size={14} /></button>
+          </div>
           <h1>PITCH SHIFT <span className="highlight">YT</span></h1>
           <p className="subtitle">Premium YouTube Audio Engine</p>
         </header>

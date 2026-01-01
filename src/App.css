@@ -1,15 +1,50 @@
-/* App specific styles */
-.logo {
-  height: 6em;
-  padding: 1.5rem;
-  will-change: filter;
-  transition: filter 300ms;
+/* App status styles */
+.status-badge-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
+.status-badge {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-weight: bold;
+  text-transform: uppercase;
 }
 
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.status-badge.online {
+  background: #10b981;
+  color: white;
 }
+
+.status-badge.offline {
+  background: #ef4444;
+  color: white;
+}
+
+.status-badge.error {
+  background: #f59e0b;
+  color: white;
+}
+
+.status-badge.checking {
+  background: #64748b;
+  color: white;
+}
+
+.btn-refresh {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.btn-refresh:hover {
+  color: white;
+}
+
+/* Rest of the styles can follow the main design */

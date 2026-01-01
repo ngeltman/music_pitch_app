@@ -25,6 +25,19 @@ A React application to play music and modify its pitch, with YouTube integration
     - Backend: `npm run server` (port 3001)
     - Frontend: `npm run dev` (port 5173)
 
-## Authentication
+## Deployment
 
-To access restricted YouTube content, click "Sign in with Google" in the app header and follow the instructions to authorize the device.
+### Backend (Render)
+1.  Connect your repo to Render and choose **Docker** as the environment.
+2.  Set the following environment variables:
+    - `PORT`: `3001`
+    - `NODE_ENV`: `production`
+
+### Frontend (Vercel)
+1.  Connect your repo to Vercel.
+2.  Set the environment variable:
+    - `VITE_API_URL`: `https://your-backend-name.onrender.com` (Replace with your Render URL).
+3.  Redeploy.
+
+## Authentication
+... (existing content)
