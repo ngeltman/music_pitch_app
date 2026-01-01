@@ -103,20 +103,25 @@ app.get('/api/info', async (req, res) => {
         const youtube = await getYouTube();
         console.log('[BACKEND] Instance obtained. Extracting ID...');
         const videoId = extractVideoId(url);
+        console.log(`[BACKEND] Extracted Video ID: "${videoId}"`);
 
-        if (!videoId) {
-            console.error('[BACKEND] Invalid YouTube URL:', url);
-            return res.status(400).json({ error: 'Invalid YouTube URL', details: 'Could not extract video ID from the provided link.' });
+        if (!videoId || videoId.length !== 11) {
+            console.error('[BACKEND] Invalid/Incomplete Video ID:', videoId);
+            return res.status(400).json({ error: 'Invalid YouTube URL', details: `Could not extract a valid 11-character video ID. Extracted: ${videoId}` });
         }
 
         console.log(`[BACKEND] Fetching info for ID: ${videoId}`);
-        const info = await youtube.getBasicInfo(videoId).catch(err => {
-            console.error('[BACKEND] getBasicInfo failed:', err.message);
+        // Use getInfo instead of getBasicInfo for more robust metadata
+        const info = await youtube.getInfo(videoId).catch(err => {
+            console.error('[BACKEND] getInfo failed!');
+            console.error('[BACKEND] Error Name:', err.name);
+            console.error('[BACKEND] Error Message:', err.message);
+            if (err.info) console.error('[BACKEND] Innertube Info:', JSON.stringify(err.info));
             throw err;
         });
-        console.log('[BACKEND] Basic info fetched successfully');
+        console.log('[BACKEND] Info fetched successfully');
 
-        // Defensive mapping
+        // Map response (getInfo structure is slightly different)
         const basic = info.basic_info;
         const response = {
             title: basic.title || 'Unknown Title',
